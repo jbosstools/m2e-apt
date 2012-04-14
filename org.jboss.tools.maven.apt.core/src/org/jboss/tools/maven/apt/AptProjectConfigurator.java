@@ -349,9 +349,10 @@ public final class AptProjectConfigurator extends AbstractProjectConfigurator im
   }
   
   /**
-   * Returns the <code>generatedSourcesDirectory</code> configuration parameter of the
-   * {@link #COMPILER_PLUGIN_ARTIFACT_ID} plugin, or <code>null</code> if the {@link #GOAL_COMPILE} is not being
-   * executed for this project.
+   * Returns the <code>-A</code> processor options found in the <code>compilerArgument</code> and 
+   * <code>compilerArguments</code> configuration elements of the 
+   * {@link #COMPILER_PLUGIN_ARTIFACT_ID} plugin, or and empty map if the {@link #GOAL_COMPILE} is 
+   * not being executed for this project.
    * 
    * @param mavenSession the {@link MavenSession} being used
    * @param mavenProjectFacade the {@link IMavenProjectFacade} of the project to get the
