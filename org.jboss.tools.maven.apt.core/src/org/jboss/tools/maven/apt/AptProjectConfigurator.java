@@ -83,6 +83,7 @@ import org.jboss.tools.maven.apt.AnnotationServiceLocator.ServiceEntry;
  * </p>
  */
 public final class AptProjectConfigurator extends AbstractProjectConfigurator implements IJavaProjectConfigurator {
+
   /**
    * The <code>groupId</code> of the <a href="http://maven.apache.org/plugins/maven-compiler-plugin/">Maven Compiler
    * Plugin</a>.
@@ -94,6 +95,12 @@ public final class AptProjectConfigurator extends AbstractProjectConfigurator im
    * Plugin</a>.
    */
   private static final String COMPILER_PLUGIN_ARTIFACT_ID = "maven-compiler-plugin";
+  
+  /**
+   * The name of the configuration element that holds the compiler argument configuration if the 
+   * <a href="http://maven.apache.org/plugins/maven-compiler-plugin/">Maven Compiler Plugin</a>.
+   */
+  private static final String COMPILER_ARGUMENT_ELEMENT = "compilerArgument";  
 
   /**
    * The name of the <a href="http://maven.apache.org/plugins/maven-compiler-plugin/">Maven Compiler Plugin</a>'s
@@ -278,7 +285,8 @@ public final class AptProjectConfigurator extends AbstractProjectConfigurator im
     List<File> resolvedJarArtifacts = filterToResolvedJars(artifacts);
 
     // Inspect the dependencies to see if any contain APT processors
-    boolean isAnnotationProcessingEnabled = !isProcNone()//Will be ignored when org.bsc.maven:maven-processor-plugin is used
+    boolean isAnnotationProcessingEnabled = isAnnotationProcessingEnabled(mavenSession, mavenProjectFacade, monitor)
+                                            //Will be ignored when org.bsc.maven:maven-processor-plugin is used
                                             && containsAptProcessors(resolvedJarArtifacts); 
     
     // Enable/Disable APT (depends on whether APT processors were found)
@@ -324,9 +332,50 @@ public final class AptProjectConfigurator extends AbstractProjectConfigurator im
     }
   }
 
-  private boolean isProcNone() {
-    // TODO Check if annotation processing is disabled with -proc:none
-    return false;
+  /**
+   * Check to see if there are any compiler plugins defined in the project that will cause the
+   * annotation processor to run.
+   * 
+   * Specifically we look for places where it is explicitly disabled since on is the default option.
+   * 
+   * @param mavenSession the {@link MavenSession} being used
+   * @param mavenProjectFacade the {@link IMavenProjectFacade} of the project to get the
+   *          annotation processor options configuration parameters from
+   * @param monitor the {@link IProgressMonitor} for this operation
+   * @return true if configured compiler plugins will cause an annotation processor to run, else return false.
+   * @throws CoreException Any {@link CoreException}s encountered will be passed through.
+   */
+  private boolean isAnnotationProcessingEnabled(MavenSession mavenSession, IMavenProjectFacade mavenProjectFacade,
+      IProgressMonitor monitor) throws CoreException {    
+    boolean processorWillRun = false; // defaults to false if no compiler configured in the project
+    for(MojoExecution mojoExecution : mavenProjectFacade.getMojoExecutions(COMPILER_PLUGIN_GROUP_ID,
+        COMPILER_PLUGIN_ARTIFACT_ID, monitor, GOAL_COMPILE)) {      
+      String compilerArgument = maven.getMojoParameterValue(mavenSession, mojoExecution,
+          COMPILER_ARGUMENT_ELEMENT, String.class);
+      String proc = maven.getMojoParameterValue(mavenSession, mojoExecution, "proc", String.class);
+      
+      // the annotation processor will run unless -proc:none is given in the compilerArgument 
+      if(compilerArgument != null) {
+        processorWillRun = !compilerArgument.contains("-proc:none");
+      }
+      
+      // the annotation processor will run unless none is given in the proc config element
+      if (proc != null) {
+        processorWillRun = !"none".equals(proc.trim().toLowerCase());
+      }
+      
+      // the annotation processor will run if neither of the two config options is given 
+      if (proc == null && compilerArgument == null) {
+        processorWillRun = true;
+      }
+      
+      // if the processor will run there is no point looking at other compiler plugin configs
+      if (processorWillRun) {
+        break;
+      }
+    }    
+    
+    return processorWillRun;
   }
 
   /**
@@ -349,68 +398,40 @@ public final class AptProjectConfigurator extends AbstractProjectConfigurator im
   }
   
   /**
-   * Returns the <code>-A</code> processor options found in the <code>compilerArgument</code> and 
-   * <code>compilerArguments</code> configuration elements of the 
-   * {@link #COMPILER_PLUGIN_ARTIFACT_ID} plugin, or and empty map if the {@link #GOAL_COMPILE} is 
+   * Returns the <code>-A</code> processor options found in the <code>compilerArgument</code> 
+   * configuration element of the 
+   * {@link #COMPILER_PLUGIN_ARTIFACT_ID} plugin, or an empty map if the {@link #GOAL_COMPILE} is 
    * not being executed for this project.
    * 
    * @param mavenSession the {@link MavenSession} being used
    * @param mavenProjectFacade the {@link IMavenProjectFacade} of the project to get the
-   *          processor options configuration parameters from
+   *          annotation processor options configuration parameters from
    * @param monitor the {@link IProgressMonitor} for this operation
-   * @return a map of <code>-A</code> processor options found in the <code>compilerArgument</code> and 
-   *          <code>compilerArguments</code> configuration elements of the
-   *         {@link #COMPILER_PLUGIN_ARTIFACT_ID} plugin, or an empty map if the {@link #GOAL_COMPILE} is not being
-   *         executed for this project
+   * @return a map of <code>-A</code> processor options found in the <code>compilerArgument</code> 
+   *         configuration element of the {@link #COMPILER_PLUGIN_ARTIFACT_ID} plugin, or an 
+   *         empty map if the {@link #GOAL_COMPILE} is not being executed for this project
    * @throws CoreException Any {@link CoreException}s encountered will be passed through.
    */
   private Map<String, String> getProcessorOptions(MavenSession mavenSession, IMavenProjectFacade mavenProjectFacade,
       IProgressMonitor monitor) throws CoreException {
     Map<String, String> ret = new HashMap<String, String>();
     for(MojoExecution mojoExecution : mavenProjectFacade.getMojoExecutions(COMPILER_PLUGIN_GROUP_ID,
-        COMPILER_PLUGIN_ARTIFACT_ID, monitor, GOAL_COMPILE)) {
-      ret.putAll(processCompilerArgument(mavenSession, mojoExecution));
-      ret.putAll(processCompilerArguments(mavenSession, mojoExecution));
+        COMPILER_PLUGIN_ARTIFACT_ID, monitor, GOAL_COMPILE)) {      
+      String compilerArgument = maven.getMojoParameterValue(mavenSession, mojoExecution,
+          COMPILER_ARGUMENT_ELEMENT, String.class);
+      if(compilerArgument != null) {
+        ret.putAll(extractProcessorOptionsFromCompilerArgument(compilerArgument));
+      }
     }
 
-    return ret;
-  }
-
-  private Map<String, String> processCompilerArgument(MavenSession mavenSession, MojoExecution mojoExecution)
-      throws CoreException {
-    final Map<String, String> ret;
-    String compilerArgument = maven.getMojoParameterValue(mavenSession, mojoExecution,
-        "compilerArgument", String.class);
-    if(compilerArgument != null)
-      ret = parseProcessorOptions(compilerArgument);
-    else
-      ret = Collections.emptyMap();
     return ret;
   }
   
-  private Map<String, String> processCompilerArguments(MavenSession mavenSession, MojoExecution mojoExecution)
-      throws CoreException {
-    final Map<String, String> ret;
-    Map<String, String> compilerArguments = maven.getMojoParameterValue(mavenSession, mojoExecution,
-        "compilerArguments", Map.class);
-    if(compilerArguments != null && !compilerArguments.isEmpty()) {
-      ret = new HashMap<String, String>();
-      for(Map.Entry<String, String> entry : compilerArguments.entrySet()) {
-        if (entry.getKey().startsWith("-A")) {
-          ret.put(entry.getKey(), entry.getValue());
-        }
-      }
-    } else {
-      ret = Collections.emptyMap();
-    }
-    return ret;
-  }    
-
   /**
    * @param compilerArgument
    * @return
    */
-  private static Map<String, String> parseProcessorOptions(String compilerArgument) {
+  private static Map<String, String> extractProcessorOptionsFromCompilerArgument(String compilerArgument) {
     Map<String, String> ret = new HashMap<String, String>();
     
     Pattern fullOptionPattern = Pattern.compile("-A([^ \\t\"']+)");
