@@ -35,6 +35,7 @@
     <tycho.scmUrl>scm:git:git://github.com/jbosstools/m2e-apt.git</tycho.scmUrl>
     <m2e-core-version>1.5.0</m2e-core-version>
     <site-compressed>http://repository.sonatype.org/service/local/repositories/forge-sites/content-compressed/</site-compressed>
+		<tycho.scmUrl>scm:git:https://github.com/jbosstools/m2e-apt.git</tycho.scmUrl>
   </properties>
 
   <modules>
