@@ -1,6 +1,10 @@
 Maven integration with Eclipse JDT Annotation Processor Toolkit.
 ================================================================
 
+⚠️ **The m2e-apt code [has been moved](https://github.com/eclipse-m2e/m2e-core/pull/579) to the [Eclipse m2e](https://github.com/eclipse-m2e/m2e-core/) project. It'll be part of m2e 2.x releases. As a consequence, this repository is now archived.**
+
+
+
 [![Build Status](https://travis-ci.org/jbosstools/m2e-apt.svg?branch=master)](https://travis-ci.org/jbosstools/m2e-apt)
 
 m2e-apt aims at providing automatic Annotation Processing configuration in Eclipse based on your project's pom.xml and its classpath dependencies. m2e-apt requires Java >= 1.8 to run, but will work on Java 6 projects.
